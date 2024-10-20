@@ -22,6 +22,7 @@ impl Plugin for TerminalPlugin {
 }
 
 pub(crate) enum InternalEvent {
+    Backspace,
     Print(char),
 }
 
@@ -57,6 +58,13 @@ impl InternalTerminalState {
                     }
 
                     text.sections[0].value.push(character);
+                }
+                InternalEvent::Backspace => {
+                    if text.sections.is_empty() {
+                        continue;
+                    }
+
+                    text.sections[0].value.pop();
                 }
             }
         }
@@ -129,6 +137,7 @@ fn try_spawn(terminal: &Terminal) -> io::Result<InternalTerminalState> {
 
                     writer_control_fd.write_all(bytes)?;
                 }
+                _ => unreachable!(),
             }
         }
 
@@ -184,6 +193,12 @@ fn update_terminals(
                 Key::Enter => {
                     state.writer_sender.send(InternalEvent::Print('\n'));
                 }
+                Key::Space => {
+                    state.writer_sender.send(InternalEvent::Print(' '));
+                }
+                Key::Backspace => {
+                    state.writer_sender.send(InternalEvent::Print('\x08'));
+                }
                 _ => {}
             }
         }
@@ -209,6 +224,11 @@ impl Perform for Performer {
 
     fn execute(&mut self, byte: u8) {
         match byte {
+            0x08 => {
+                if let Err(_error) = self.reader_sender.send(InternalEvent::Backspace) {
+                    //
+                }
+            }
             0x0A => {
                 if let Err(_error) = self.reader_sender.send(InternalEvent::Print('\n')) {
                     //
