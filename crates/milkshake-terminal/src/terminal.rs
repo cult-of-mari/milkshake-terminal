@@ -1,8 +1,8 @@
 use bevy::input::keyboard::{Key, KeyboardInput};
 use bevy::prelude::*;
 use crossbeam_channel::{Receiver, Sender};
-use rustix::{process, termios};
-use std::collections::HashMap;
+use milkshake_vte::{Vte, VteHandler};
+use rustix::process;
 use std::ffi::OsString;
 use std::fs::File;
 use std::io::{self, BufReader, Read, Write};
@@ -11,7 +11,6 @@ use std::os::unix::process::CommandExt;
 use std::process::{Child, Command};
 use std::sync::Arc;
 use std::thread::{self, JoinHandle};
-use vte::{Params, Parser, Perform};
 
 pub struct TerminalPlugin;
 
@@ -21,9 +20,13 @@ impl Plugin for TerminalPlugin {
     }
 }
 
-pub(crate) enum InternalEvent {
-    Backspace,
+pub(crate) enum ReadEvent {
     Print(char),
+    Backspace,
+}
+
+pub(crate) enum WriteEvent {
+    Input(char),
 }
 
 #[derive(Component, Debug)]
@@ -40,16 +43,16 @@ pub struct InternalTerminalState {
     pub(crate) child_process: Child,
     pub(crate) inner: Inner,
     pub(crate) reader_handle: JoinHandle<io::Result<()>>,
-    pub(crate) reader_receiver: Receiver<InternalEvent>,
+    pub(crate) reader_receiver: Receiver<ReadEvent>,
     pub(crate) writer_handle: JoinHandle<io::Result<()>>,
-    pub(crate) writer_sender: Sender<InternalEvent>,
+    pub(crate) writer_sender: Sender<WriteEvent>,
 }
 
 impl InternalTerminalState {
     fn process_events(&mut self, terminal: &Terminal, text: &mut Mut<'_, Text>) {
         for event in self.reader_receiver.try_iter() {
             match event {
-                InternalEvent::Print(character) => {
+                ReadEvent::Print(character) => {
                     if text.sections.is_empty() {
                         text.sections.push(TextSection {
                             style: terminal.text_style.clone(),
@@ -59,7 +62,7 @@ impl InternalTerminalState {
 
                     text.sections[0].value.push(character);
                 }
-                InternalEvent::Backspace => {
+                ReadEvent::Backspace => {
                     if text.sections.is_empty() {
                         continue;
                     }
@@ -76,7 +79,7 @@ fn spawn_terminals(
     mut query: Query<(Entity, &Terminal), Without<InternalTerminalState>>,
 ) {
     for (entity, terminal) in query.iter_mut() {
-        match try_spawn(&terminal) {
+        match try_spawn(terminal) {
             Ok(internal_state) => {
                 commands.entity(entity).insert(internal_state);
             }
@@ -112,16 +115,13 @@ fn try_spawn(terminal: &Terminal) -> io::Result<InternalTerminalState> {
 
     let reader_control_fd = Arc::clone(&writer_control_fd);
     let reader_handle = thread::spawn(move || {
-        let mut parser = Parser::new();
-        let mut performer = Performer::new(reader_sender);
+        let bytes = BufReader::new(reader_control_fd).bytes();
+        let mut vte = Vte::new(Handler { reader_sender });
 
-        for result in BufReader::new(reader_control_fd).bytes() {
-            match result {
-                Ok(byte) => {
-                    parser.advance(&mut performer, byte);
-                }
-                Err(error) => {}
-            }
+        for byte in bytes {
+            let byte = byte.inspect_err(|error| error!("read from control fd: {error}"))?;
+
+            vte.process(byte);
         }
 
         io::Result::Ok(())
@@ -132,12 +132,11 @@ fn try_spawn(terminal: &Terminal) -> io::Result<InternalTerminalState> {
 
         while let Ok(internal_event) = writer_receiver.recv() {
             match internal_event {
-                InternalEvent::Print(character) => {
+                WriteEvent::Input(character) => {
                     let bytes = character.encode_utf8(&mut buf).as_bytes();
 
                     writer_control_fd.write_all(bytes)?;
                 }
-                _ => unreachable!(),
             }
         }
 
@@ -177,7 +176,7 @@ fn update_terminals(
     mut query: Query<(&Terminal, &mut InternalTerminalState, &mut Text)>,
 ) {
     for (terminal, mut state, mut text) in query.iter_mut() {
-        state.process_events(&terminal, &mut text);
+        state.process_events(terminal, &mut text);
 
         for event in reader.read() {
             if !event.state.is_pressed() {
@@ -187,17 +186,17 @@ fn update_terminals(
             match &event.logical_key {
                 Key::Character(string) => {
                     for character in string.chars() {
-                        state.writer_sender.send(InternalEvent::Print(character));
+                        state.writer_sender.send(WriteEvent::Input(character));
                     }
                 }
                 Key::Enter => {
-                    state.writer_sender.send(InternalEvent::Print('\n'));
+                    state.writer_sender.send(WriteEvent::Input('\n'));
                 }
                 Key::Space => {
-                    state.writer_sender.send(InternalEvent::Print(' '));
+                    state.writer_sender.send(WriteEvent::Input(' '));
                 }
                 Key::Backspace => {
-                    state.writer_sender.send(InternalEvent::Print('\x08'));
+                    state.writer_sender.send(WriteEvent::Input('\x08'));
                 }
                 _ => {}
             }
@@ -205,36 +204,20 @@ fn update_terminals(
     }
 }
 
-pub(crate) struct Performer {
-    reader_sender: Sender<InternalEvent>,
+pub(crate) struct Handler {
+    reader_sender: Sender<ReadEvent>,
 }
 
-impl Performer {
-    pub fn new(reader_sender: Sender<InternalEvent>) -> Self {
-        Self { reader_sender }
-    }
-}
-
-impl Perform for Performer {
-    fn print(&mut self, character: char) {
-        if let Err(_error) = self.reader_sender.send(InternalEvent::Print(character)) {
-            //
-        }
+impl VteHandler for Handler {
+    fn input(&mut self, character: char) {
+        self.reader_sender.send(ReadEvent::Print(character));
     }
 
-    fn execute(&mut self, byte: u8) {
-        match byte {
-            0x08 => {
-                if let Err(_error) = self.reader_sender.send(InternalEvent::Backspace) {
-                    //
-                }
-            }
-            0x0A => {
-                if let Err(_error) = self.reader_sender.send(InternalEvent::Print('\n')) {
-                    //
-                }
-            }
-            _ => {}
-        }
+    fn backspace(&mut self) {
+        self.reader_sender.send(ReadEvent::Backspace);
+    }
+
+    fn newline(&mut self) {
+        self.reader_sender.send(ReadEvent::Print('\n'));
     }
 }

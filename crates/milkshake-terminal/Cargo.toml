@@ -1,0 +1,14 @@
+[package]
+name = "milkshake-terminal"
+version = "0.0.0"
+edition = "2021"
+
+[dependencies]
+avian3d.workspace = true
+bevy.workspace = true
+crossbeam-channel.workspace = true
+leafwing-input-manager.workspace = true
+libc.workspace = true
+milkshake-vte.workspace = true
+rustix.workspace = true
+rustix-openpty.workspace = true

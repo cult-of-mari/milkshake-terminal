@@ -1,9 +1,8 @@
-[package]
-name = "milkshake-term"
-version = "0.0.0"
-edition = "2021"
+[workspace]
+members = ["crates/*"]
+resolver = "2"
 
-[dependencies]
+[workspace.dependencies]
 avian3d = { version = "0.1.2", default-features = false, features = [
     "3d",
     "bevy_scene",
@@ -13,7 +12,20 @@ avian3d = { version = "0.1.2", default-features = false, features = [
     "parallel",
     "parry-f32",
 ] }
-bevy = { version = "0.14.2", default-features = false, features = ["animation", "bevy_asset", "bevy_audio", "bevy_core_pipeline", "bevy_state", "bevy_render", "bevy_pbr", "bevy_ui", "tonemapping_luts", "bevy_winit", "wayland", "png"] }
+bevy = { version = "0.14.2", default-features = false, features = [
+    "animation",
+    "bevy_asset",
+    "bevy_audio",
+    "bevy_core_pipeline",
+    "bevy_state",
+    "bevy_render",
+    "bevy_pbr",
+    "bevy_ui",
+    "tonemapping_luts",
+    "bevy_winit",
+    "wayland",
+    "png",
+] }
 bevy_ecs = { version = "0.14.2", default-features = false }
 crossbeam-channel = { version = "0.5.13", default-features = false }
 leafwing-input-manager = { version = "0.15.1", default-features = false, features = [
@@ -23,11 +35,15 @@ leafwing-input-manager = { version = "0.15.1", default-features = false, feature
     "timing",
 ] }
 libc = { version = "0.2.161", default-features = false }
-rustix = { version = "0.38.37", default-features = false, features = ["process"] }
+rustix = { version = "0.38.37", default-features = false, features = [
+    "process",
+] }
 rustix-openpty = { version = "0.1.1", default-features = false }
 unicode-segmentation = { version = "1.12.0", default-features = false }
 vte = { version = "0.13.0", default-features = false }
 
+milkshake-vte.path = "crates/milkshake-vte"
+milkshake-terminal.path = "crates/milkshake-terminal"
 
 [profile.dev]
 opt-level = 2
