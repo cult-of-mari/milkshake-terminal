@@ -6,6 +6,7 @@ use compact_str::CompactString;
 use crossbeam_channel::{Receiver, Sender};
 use milkshake_vte::Vte;
 use rustix::process;
+use rustix::termios::Winsize;
 use std::fs::File;
 use std::io::{BufReader, Read, Write};
 use std::os::fd::{AsRawFd, BorrowedFd, RawFd};
@@ -28,8 +29,15 @@ pub struct InternalTerminalState {
 impl InternalTerminalState {
     pub(super) fn new(terminal: &Terminal) -> io::Result<Self> {
         let mut command = Command::new(&terminal.program);
+        let size = Winsize {
+            ws_col: terminal.size.x,
+            ws_row: terminal.size.x,
+            ws_xpixel: 0,
+            ws_ypixel: 0,
+        };
 
-        let pty = rustix_openpty::openpty(None, None)?;
+        let pty = rustix_openpty::openpty(None, Some(&size))?;
+
         let mut control = Arc::new(File::from(pty.controller));
         let user = pty.user;
 
