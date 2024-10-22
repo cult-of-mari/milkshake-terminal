@@ -1,5 +1,6 @@
 use bevy::log::error;
 use bevy::math::U16Vec2;
+use compact_str::CompactString;
 use crossbeam_channel::Sender;
 use milkshake_vte::VteHandler;
 
@@ -24,7 +25,7 @@ pub enum ReadEvent {
 
 #[derive(Debug)]
 pub enum WriteEvent {
-    Input(char),
+    Input(CompactString),
 }
 
 pub struct Handler {
@@ -45,7 +46,12 @@ impl Handler {
 
 impl VteHandler for Handler {
     fn input(&mut self, character: char) {
-        self.send(ReadEvent::Print(character));
+        let event = match character {
+            ' ' => ReadEvent::MoveRight(1),
+            _ => ReadEvent::Print(character),
+        };
+
+        self.send(event);
     }
 
     fn backspace(&mut self) {
@@ -73,7 +79,7 @@ impl VteHandler for Handler {
     }
 
     fn move_to(&mut self, row: u16, col: u16) {
-        self.send(ReadEvent::MoveTo(U16Vec2::new(row, col)))
+        self.send(ReadEvent::MoveTo(U16Vec2::new(col, row)));
     }
 
     fn move_to_line_start(&mut self) {

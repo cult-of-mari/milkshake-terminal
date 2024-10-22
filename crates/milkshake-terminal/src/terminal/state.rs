@@ -1,8 +1,8 @@
-use super::buffer::Buffer;
+use super::grid::Grid;
 use super::handler::{Handler, ReadEvent, WriteEvent};
 use super::Terminal;
-use bevy::math::U16Vec2;
 use bevy::prelude::*;
+use compact_str::CompactString;
 use crossbeam_channel::{Receiver, Sender};
 use milkshake_vte::Vte;
 use rustix::process;
@@ -17,7 +17,7 @@ use std::{io, thread};
 
 #[derive(Component, Debug)]
 pub struct InternalTerminalState {
-    pub(super) buffer: Buffer,
+    pub(super) grid: Grid,
     child_process: Child,
     reader_handle: JoinHandle<io::Result<()>>,
     pub(super) reader_receiver: Receiver<ReadEvent>,
@@ -63,14 +63,10 @@ impl InternalTerminalState {
         });
 
         let writer_handle = thread::spawn(move || {
-            let mut buf = [0; 4];
-
             while let Ok(internal_event) = writer_receiver.recv() {
                 match internal_event {
-                    WriteEvent::Input(character) => {
-                        let bytes = character.encode_utf8(&mut buf).as_bytes();
-
-                        control.write_all(bytes)?;
+                    WriteEvent::Input(string) => {
+                        control.write_all(string.as_bytes())?;
                     }
                 }
             }
@@ -79,12 +75,12 @@ impl InternalTerminalState {
         });
 
         let child_process = command.spawn()?;
-        let mut buffer = Buffer::new();
+        let mut grid = Grid::new();
 
-        buffer.resize(U16Vec2::new(105, 65));
+        grid.resize(terminal.size);
 
         Ok(Self {
-            buffer,
+            grid,
             child_process,
             reader_handle,
             reader_receiver,
@@ -112,5 +108,9 @@ impl InternalTerminalState {
         if let Err(error) = self.writer_sender.send(write_event) {
             error!("{error}");
         }
+    }
+
+    pub(super) fn input<I: Into<CompactString>>(&self, input: I) {
+        self.send(WriteEvent::Input(input.into()));
     }
 }

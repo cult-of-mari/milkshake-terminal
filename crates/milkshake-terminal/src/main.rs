@@ -1,5 +1,6 @@
 use self::terminal::Terminal;
 use avian3d::prelude::*;
+use bevy::math::U16Vec2;
 use bevy::prelude::*;
 use bevy::render::camera::RenderTarget;
 use bevy::render::render_resource::{
@@ -104,29 +105,22 @@ fn setup(
             ));
         });
 
-    commands
-        .spawn((
-            NodeBundle {
-                background_color: Color::BLACK.with_alpha(0.1).into(),
-                style: Style {
-                    aspect_ratio: Some(1.0),
-                    display: Display::Grid,
-                    width: Val::Px(1000.0),
-                    height: Val::Px(1000.0),
-                    grid_template_columns: RepeatedGridTrack::flex(105, 1.0),
-                    grid_template_rows: RepeatedGridTrack::flex(65, 1.0),
-                    ..default()
-                },
+    commands.spawn((
+        NodeBundle {
+            style: Style {
+                display: Display::Grid,
+                width: Val::Percent(100.0),
+                height: Val::Percent(100.0),
                 ..default()
             },
-            Terminal {
-                program: "fish".into(),
-                text_style: style.clone(),
-            },
-        ))
-        .with_children(|_builder| {
-            // Intentionally empty, just to insert the Children component.
-        });
+            ..default()
+        },
+        Terminal {
+            program: "fish".into(),
+            text_style: style.clone(),
+            size: U16Vec2::new(236, 80),
+        },
+    ));
 
     commands.spawn(Camera3dBundle::default());
 }
