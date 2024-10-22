@@ -17,8 +17,9 @@ impl<T: VteHandler> vte::Perform for Performer<T> {
 
     fn execute(&mut self, byte: u8) {
         match byte {
-            0x08 => self.state.backspace(),
-            0x0A => self.state.newline(),
+            b'\x08' => self.state.backspace(),
+            b'\r' => self.state.move_to_line_start(),
+            b'\n' => self.state.newline(),
             _ => {}
         }
     }
@@ -27,7 +28,7 @@ impl<T: VteHandler> vte::Perform for Performer<T> {
         &mut self,
         params: &vte::Params,
         intermediates: &[u8],
-        ignore: bool,
+        _ignore: bool,
         action: char,
     ) {
         let mut args = Args::new(params.iter());
@@ -38,6 +39,8 @@ impl<T: VteHandler> vte::Perform for Performer<T> {
             ('C', []) => self.state.move_right(args.one_based()),
             ('D', []) => self.state.move_left(args.one_based()),
             ('H', []) | ('f', []) => self.state.move_to(args.one_based(), args.one_based()),
+            ('E', []) => self.state.move_up_to_line_start(args.one_based()),
+            ('F', []) => self.state.move_down_to_line_start(args.one_based()),
             _ => {}
         }
     }

@@ -105,71 +105,27 @@ fn setup(
         });
 
     commands
-        .spawn(NodeBundle {
-            style: Style {
-                flex_direction: FlexDirection::Column,
-                margin: UiRect::all(Val::Px(24.0)),
+        .spawn((
+            NodeBundle {
+                background_color: Color::BLACK.with_alpha(0.1).into(),
+                style: Style {
+                    aspect_ratio: Some(1.0),
+                    display: Display::Grid,
+                    width: Val::Px(1000.0),
+                    height: Val::Px(1000.0),
+                    grid_template_columns: RepeatedGridTrack::flex(105, 1.0),
+                    grid_template_rows: RepeatedGridTrack::flex(65, 1.0),
+                    ..default()
+                },
                 ..default()
             },
-            ..default()
-        })
-        .with_children(|parent| {
-            parent.spawn(TextBundle {
-                text: Text::from_sections([TextSection::new("\n~ 1000\n> \n", style.clone())]),
-                ..default()
-            });
-
-            parent.spawn(NodeBundle::default()).with_children(|parent| {
-                parent.spawn(ImageBundle {
-                    style: Style {
-                        height: Val::Px(256.0),
-                        width: Val::Px(256.0),
-                        ..default()
-                    },
-                    image: image_handle.into(),
-                    ..default()
-                });
-
-                let lines = [
-                    "mari@puter",
-                    "----------",
-                    "OS: Chimera Linux x86_64",
-                    "Host: MS-7B79 (3.0)",
-                    "Kernel: Linux 6.11.4-0-generic",
-                    "Uptime: 57 mins",
-                    "Packages: 1346 (apk), 8 (flatpak-user)",
-                    "Shell: fish 3.7.1",
-                    "Display (C32JG5x): 2560x1440 @ 144 Hz in 32\" []",
-                    "WM: Sway (Wayland)",
-                    "Terminal: (this part isnt real yet)",
-                    "Terminal Font: Roboto Mono SemiBold [GOOG] (11)",
-                    "CPU: AMD Ryzen 9 3900X (24) @ 4.67 GHz",
-                    "GPU: NVIDIA GeForce RTX 2060",
-                    "Memory: 5.50 GiB / 125.74 GiB (4%)",
-                    "Swap: Disabled",
-                    "Disk (/): 327.47 GiB / 3.64 TiB (9%) - xfs",
-                    "Local IP (enp34s0): 192.168.20.11/24",
-                    "Locale: C.UTF-8",
-                ];
-
-                let lines = lines
-                    .iter()
-                    .map(|line| TextSection::new(format!("{line}\n"), style.clone()))
-                    .collect::<Vec<_>>();
-
-                parent.spawn(TextBundle {
-                    text: Text::from_sections(lines),
-                    ..default()
-                });
-            });
-
-            parent.spawn((
-                TextBundle::default(),
-                Terminal {
-                    program: "fish".into(),
-                    text_style: style.clone(),
-                },
-            ));
+            Terminal {
+                program: "fish".into(),
+                text_style: style.clone(),
+            },
+        ))
+        .with_children(|_builder| {
+            // Intentionally empty, just to insert the Children component.
         });
 
     commands.spawn(Camera3dBundle::default());

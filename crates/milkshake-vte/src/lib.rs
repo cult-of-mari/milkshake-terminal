@@ -4,10 +4,9 @@ use self::performer::Performer;
 mod args;
 mod performer;
 
+#[allow(unused_variables)]
 pub trait VteHandler {
-    fn input(&mut self, character: char) {
-        let _character = character;
-    }
+    fn input(&mut self, character: char) {}
 
     fn backspace(&mut self) {}
     fn newline(&mut self) {}
@@ -18,6 +17,11 @@ pub trait VteHandler {
     fn move_right(&mut self, cols: u16) {}
 
     fn move_to(&mut self, row: u16, col: u16) {}
+
+    fn move_to_line_start(&mut self) {}
+
+    fn move_up_to_line_start(&mut self, rows: u16) {}
+    fn move_down_to_line_start(&mut self, rows: u16) {}
 }
 
 pub struct Vte<T: VteHandler> {

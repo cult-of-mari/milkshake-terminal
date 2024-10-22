@@ -1,16 +1,14 @@
+use self::handler::{ReadEvent, WriteEvent};
+use self::state::InternalTerminalState;
 use bevy::input::keyboard::{Key, KeyboardInput};
+use bevy::math::U16Vec2;
 use bevy::prelude::*;
-use crossbeam_channel::{Receiver, Sender};
-use milkshake_vte::{Vte, VteHandler};
-use rustix::process;
 use std::ffi::OsString;
-use std::fs::File;
-use std::io::{self, BufReader, Read, Write};
-use std::os::fd::{AsRawFd, BorrowedFd, RawFd};
-use std::os::unix::process::CommandExt;
-use std::process::{Child, Command};
-use std::sync::Arc;
-use std::thread::{self, JoinHandle};
+use std::mem;
+
+mod buffer;
+mod handler;
+mod state;
 
 pub struct TerminalPlugin;
 
@@ -20,66 +18,18 @@ impl Plugin for TerminalPlugin {
     }
 }
 
-pub(crate) enum ReadEvent {
-    Print(char),
-    Backspace,
-}
-
-pub(crate) enum WriteEvent {
-    Input(char),
-}
-
 #[derive(Component, Debug)]
 pub struct Terminal {
     pub program: OsString,
     pub text_style: TextStyle,
 }
 
-#[derive(Debug)]
-pub(crate) struct Inner {}
-
-#[derive(Component, Debug)]
-pub struct InternalTerminalState {
-    pub(crate) child_process: Child,
-    pub(crate) inner: Inner,
-    pub(crate) reader_handle: JoinHandle<io::Result<()>>,
-    pub(crate) reader_receiver: Receiver<ReadEvent>,
-    pub(crate) writer_handle: JoinHandle<io::Result<()>>,
-    pub(crate) writer_sender: Sender<WriteEvent>,
-}
-
-impl InternalTerminalState {
-    fn process_events(&mut self, terminal: &Terminal, text: &mut Mut<'_, Text>) {
-        for event in self.reader_receiver.try_iter() {
-            match event {
-                ReadEvent::Print(character) => {
-                    if text.sections.is_empty() {
-                        text.sections.push(TextSection {
-                            style: terminal.text_style.clone(),
-                            ..default()
-                        });
-                    }
-
-                    text.sections[0].value.push(character);
-                }
-                ReadEvent::Backspace => {
-                    if text.sections.is_empty() {
-                        continue;
-                    }
-
-                    text.sections[0].value.pop();
-                }
-            }
-        }
-    }
-}
-
-fn spawn_terminals(
+pub fn spawn_terminals(
     mut commands: Commands,
     mut query: Query<(Entity, &Terminal), Without<InternalTerminalState>>,
 ) {
     for (entity, terminal) in query.iter_mut() {
-        match try_spawn(terminal) {
+        match InternalTerminalState::new(terminal) {
             Ok(internal_state) => {
                 commands.entity(entity).insert(internal_state);
             }
@@ -90,94 +40,89 @@ fn spawn_terminals(
     }
 }
 
-fn try_spawn(terminal: &Terminal) -> io::Result<InternalTerminalState> {
-    let mut command = Command::new(&terminal.program);
+pub fn update_terminals(
+    mut commands: Commands,
+    mut reader: EventReader<KeyboardInput>,
+    mut terminal_query: Query<(Entity, &Terminal, &mut InternalTerminalState)>,
+    mut text_query: Query<&mut Text>,
+) {
+    for (entity, terminal, mut state) in terminal_query.iter_mut() {
+        let InternalTerminalState {
+            ref mut buffer,
+            ref mut reader_receiver,
+            ..
+        } = *state;
 
-    let pty = rustix_openpty::openpty(None, None)?;
-    let mut writer_control_fd = Arc::new(File::from(pty.controller));
-    let user_fd = pty.user;
+        for event in reader_receiver.try_iter() {
+            match event {
+                ReadEvent::Print(' ') => buffer.move_right(1),
+                ReadEvent::Print(character) => {
+                    let cursor_position = buffer.cursor_position();
 
-    command
-        .env("COLORTERM", "truecolor")
-        .env("TERM", "xterm-256color")
-        .stdin(user_fd.try_clone()?)
-        .stdout(user_fd.try_clone()?)
-        .stderr(user_fd.try_clone()?);
+                    let Some([ref mut node_entity, ref mut text_entity]) =
+                        buffer.cell_mut(cursor_position)
+                    else {
+                        continue;
+                    };
 
-    let user_fd = user_fd.as_raw_fd();
+                    if *node_entity == Entity::PLACEHOLDER {
+                        commands.entity(entity).with_children(|builder| {
+                            let [grid_column, grid_row] = to_grid_placement(cursor_position);
 
-    unsafe {
-        command.pre_exec(move || pre_exec(user_fd));
-    }
+                            let style = Style {
+                                display: Display::Grid,
+                                grid_column,
+                                grid_row,
+                                ..default()
+                            };
 
-    let (reader_sender, reader_receiver) = crossbeam_channel::unbounded();
-    let (writer_sender, writer_receiver) = crossbeam_channel::unbounded();
+                            let text = Text::from_section(character, terminal.text_style.clone());
 
-    let reader_control_fd = Arc::clone(&writer_control_fd);
-    let reader_handle = thread::spawn(move || {
-        let bytes = BufReader::new(reader_control_fd).bytes();
-        let mut vte = Vte::new(Handler { reader_sender });
+                            *node_entity = builder
+                                .spawn(NodeBundle { style, ..default() })
+                                .with_children(|builder| {
+                                    *text_entity =
+                                        builder.spawn(TextBundle { text, ..default() }).id();
+                                })
+                                .id();
+                        });
+                    } else if let Ok(mut text) = text_query.get_mut(*text_entity) {
+                        text.sections[0].value = character.into();
+                    }
 
-        for byte in bytes {
-            let byte = byte.inspect_err(|error| error!("read from control fd: {error}"))?;
-
-            vte.process(byte);
-        }
-
-        io::Result::Ok(())
-    });
-
-    let writer_handle = thread::spawn(move || {
-        let mut buf = [0; 4];
-
-        while let Ok(internal_event) = writer_receiver.recv() {
-            match internal_event {
-                WriteEvent::Input(character) => {
-                    let bytes = character.encode_utf8(&mut buf).as_bytes();
-
-                    writer_control_fd.write_all(bytes)?;
+                    buffer.move_right(1);
                 }
+                ReadEvent::Newline => buffer.move_down_to_line_start(1),
+                ReadEvent::MoveToLineStart => buffer.move_to_line_start(),
+                ReadEvent::Backspace => {
+                    let cursor_position = buffer.cursor_position();
+                    let Some(cell) = buffer.cell_mut(cursor_position) else {
+                        continue;
+                    };
+
+                    if cell[0] != Entity::PLACEHOLDER {
+                        let [node_entity, text_entity] = mem::replace(cell, buffer::PLACEHOLDER);
+
+                        commands.entity(text_entity).despawn();
+                        commands.entity(node_entity).despawn();
+                    }
+
+                    buffer.move_left(1);
+                }
+                ReadEvent::MoveUp(rows) => buffer.move_up(rows),
+                ReadEvent::MoveDown(rows) => buffer.move_down(rows),
+                ReadEvent::MoveLeft(columns) => buffer.move_left(columns),
+                ReadEvent::MoveRight(columns) => buffer.move_right(columns),
+                ReadEvent::MoveTo(position) => {
+                    buffer.cursor_position = position.clamp(U16Vec2::ONE, buffer.size());
+                }
+                ReadEvent::MoveUpToLineStart(rows) => buffer.move_up_to_line_start(rows),
+                ReadEvent::MoveDownToLineStart(rows) => buffer.move_down_to_line_start(rows),
+                //_ => {}
             }
         }
 
-        io::Result::Ok(())
-    });
-
-    let child_process = command.spawn()?;
-    let inner = Inner {};
-
-    Ok(InternalTerminalState {
-        child_process,
-        inner,
-        reader_handle,
-        reader_receiver,
-        writer_handle,
-        writer_sender,
-    })
-}
-
-fn pre_exec(user_fd: RawFd) -> io::Result<()> {
-    let user_fd = unsafe { BorrowedFd::borrow_raw(user_fd) };
-
-    process::setsid()?;
-    process::ioctl_tiocsctty(user_fd)?;
-
-    // FIXME: this is here to close fds from graphics drivers etc,
-    // as no one sets CLOEXEC in 2024...
-    (3..=1000).for_each(|fd| unsafe {
-        libc::close(fd);
-    });
-
-    Ok(())
-}
-
-fn update_terminals(
-    mut reader: EventReader<KeyboardInput>,
-    mut query: Query<(&Terminal, &mut InternalTerminalState, &mut Text)>,
-) {
-    for (terminal, mut state, mut text) in query.iter_mut() {
-        state.process_events(terminal, &mut text);
-
+        // FIXME: Only send events for focused terminals.
         for event in reader.read() {
             if !event.state.is_pressed() {
                 continue;
@@ -186,38 +131,18 @@ fn update_terminals(
             match &event.logical_key {
                 Key::Character(string) => {
                     for character in string.chars() {
-                        state.writer_sender.send(WriteEvent::Input(character));
+                        state.send(WriteEvent::Input(character));
                     }
                 }
-                Key::Enter => {
-                    state.writer_sender.send(WriteEvent::Input('\n'));
-                }
-                Key::Space => {
-                    state.writer_sender.send(WriteEvent::Input(' '));
-                }
-                Key::Backspace => {
-                    state.writer_sender.send(WriteEvent::Input('\x08'));
-                }
+                Key::Enter => state.send(WriteEvent::Input('\n')),
+                Key::Space => state.send(WriteEvent::Input(' ')),
+                Key::Backspace => state.send(WriteEvent::Input('\x08')),
                 _ => {}
             }
         }
     }
 }
 
-pub(crate) struct Handler {
-    reader_sender: Sender<ReadEvent>,
-}
-
-impl VteHandler for Handler {
-    fn input(&mut self, character: char) {
-        self.reader_sender.send(ReadEvent::Print(character));
-    }
-
-    fn backspace(&mut self) {
-        self.reader_sender.send(ReadEvent::Backspace);
-    }
-
-    fn newline(&mut self) {
-        self.reader_sender.send(ReadEvent::Print('\n'));
-    }
+fn to_grid_placement(position: U16Vec2) -> [GridPlacement; 2] {
+    <[_; 2]>::from(position).map(|value| GridPlacement::start((value + 1) as i16))
 }
