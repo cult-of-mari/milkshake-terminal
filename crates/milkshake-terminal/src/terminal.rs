@@ -101,10 +101,9 @@ pub fn update_terminals(
                     };
 
                     if cell[0] != Entity::PLACEHOLDER {
-                        let [node_entity, text_entity] = mem::replace(cell, buffer::PLACEHOLDER);
+                        let [node_entity, _text_entity] = mem::replace(cell, buffer::PLACEHOLDER);
 
-                        commands.entity(text_entity).despawn();
-                        commands.entity(node_entity).despawn();
+                        commands.entity(node_entity).despawn_recursive();
                     }
 
                     buffer.move_left(1);
