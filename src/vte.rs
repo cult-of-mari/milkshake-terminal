@@ -1,4 +1,5 @@
 use bevy::math::UVec2;
+use compact_str::CompactString;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum AnsiColor {
@@ -12,7 +13,7 @@ pub enum AnsiColor {
     White,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum VteEvent {
     Echo(char),
     Backspace,
@@ -31,6 +32,7 @@ pub enum VteEvent {
     DisableAlternativeBuffer,
     EnableBracketedPaste,
     DisableBracketedPaste,
+    ReportCursorPosition,
     Reset,
     Bold,
     Dim,
@@ -38,6 +40,16 @@ pub enum VteEvent {
     Underline,
     Foreground(AnsiColor),
     Background(AnsiColor),
+    SetTitle(CompactString),
+    RemoveTitle,
+    Image(CompactString),
+    ClearLeft,
+    ClearRight,
+    ClearLine,
+    ClearUp,
+    ClearDown,
+    ClearAll,
+    ClearEverything,
 }
 
 pub trait VteHandler {
@@ -133,6 +145,34 @@ impl<T: VteHandler> vte::Perform for Performer<T> {
         }
     }
 
+    fn osc_dispatch(&mut self, params: &[&[u8]], _bell_terminated: bool) {
+        let Some(param) = params.first() else {
+            return;
+        };
+
+        match *param {
+            b"0" => match params.get(1) {
+                Some(title) => self
+                    .state
+                    .vte_event(VteEvent::SetTitle(CompactString::from_utf8_lossy(title))),
+                None => self.state.vte_event(VteEvent::RemoveTitle),
+            },
+            b"1337" => {
+                let Some(image) = params.last() else {
+                    return;
+                };
+
+                let Some(image) = image.split(|byte| *byte == b':').last() else {
+                    return;
+                };
+
+                self.state
+                    .vte_event(VteEvent::Image(CompactString::from_utf8_lossy(image)));
+            }
+            _ => {}
+        }
+    }
+
     fn csi_dispatch(
         &mut self,
         params: &vte::Params,
@@ -155,10 +195,32 @@ impl<T: VteHandler> vte::Perform for Performer<T> {
             'H' | 'f' => self.state.vte_event(VteEvent::Goto(next_position(iter))),
 
             'm' => self.sgr(iter),
+            'n' => {
+                if let Some(6) = next(iter) {
+                    self.state.vte_event(VteEvent::ReportCursorPosition)
+                }
+            }
+
+            'J' => match next(iter) {
+                Some(0) | None => self.state.vte_event(VteEvent::ClearDown),
+                Some(1) => self.state.vte_event(VteEvent::ClearUp),
+                Some(2) => self.state.vte_event(VteEvent::ClearAll),
+                Some(3) => self.state.vte_event(VteEvent::ClearEverything),
+                _ => {}
+            },
+
+            'K' => match next(iter) {
+                Some(0) | None => self.state.vte_event(VteEvent::ClearRight),
+                Some(1) => self.state.vte_event(VteEvent::ClearLeft),
+                Some(2) => self.state.vte_event(VteEvent::ClearLine),
+                _ => {}
+            },
 
             's' => self.state.vte_event(VteEvent::SaveCursorPosition),
             'u' => self.state.vte_event(VteEvent::RestoreCursorPosition),
-            _ => {}
+            _ => {
+                //dbg!(action);
+            }
         }
     }
 }

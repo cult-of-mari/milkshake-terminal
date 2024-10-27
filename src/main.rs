@@ -1,7 +1,11 @@
 use self::vte::{Vte, VteEvent};
+use bevy::asset::RenderAssetUsages;
 use bevy::color::palettes::css;
 use bevy::input::keyboard::KeyboardInput;
 use bevy::prelude::*;
+use bevy::render::camera::RenderTarget;
+use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat, TextureUsages};
+use bevy::render::view::RenderLayers;
 use compact_str::CompactString;
 use crossbeam_channel::{Receiver, Sender};
 use pseudo_terminal::PseudoTerminal;
@@ -137,8 +141,14 @@ fn main() {
         .insert_resource(ClearColor(Color::BLACK))
         .add_plugins(DefaultPlugins)
         .add_systems(Startup, setup)
-        .add_systems(Update, (setup_terminal, update))
+        .add_systems(Update, (setup_terminal, update, rotate_cubes))
         .run();
+}
+
+fn rotate_cubes(mut query: Query<&mut Transform, With<Cube>>, time: ResMut<Time>) {
+    for mut transform in query.iter_mut() {
+        transform.rotate_local_x(time.delta_secs());
+    }
 }
 
 fn setup(asset_server: Res<AssetServer>, mut commands: Commands) {
@@ -226,6 +236,9 @@ pub fn setup_terminal(
     }
 }
 
+#[derive(Clone, Copy, Component, Debug, Default, Eq, PartialEq, Reflect)]
+pub struct Cube;
+
 static TABLE: [Srgba; 8] = [
     css::BLACK,
     css::RED,
@@ -239,6 +252,9 @@ static TABLE: [Srgba; 8] = [
 
 fn update(
     mut commands: Commands,
+    mut images: ResMut<Assets<Image>>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
     mut keyboard_input: EventReader<KeyboardInput>,
     mut query: Query<(Entity, &mut InternalTerminalState)>,
     terminal_fonts: Query<&TerminalFonts>,
@@ -253,6 +269,8 @@ fn update(
         } = &mut *state;
 
         for event in reader.try_iter() {
+            debug!("{event:?}");
+
             match event {
                 VteEvent::Echo(character) => {
                     let Some(cell_entity) = cells.get_mut(state.cursor_offset(400)) else {
@@ -303,6 +321,222 @@ fn update(
                 }
                 VteEvent::Background(color) => {
                     state.style.background = TABLE[color as usize].into();
+                }
+                VteEvent::Image(image) => {
+                    let image =
+                        base64::Engine::decode(&base64::engine::general_purpose::STANDARD, image)
+                            .unwrap();
+
+                    let mut reader = image::ImageReader::new(std::io::Cursor::new(image));
+
+                    reader = reader.with_guessed_format().unwrap();
+
+                    let image = reader.decode().unwrap();
+
+                    let image_handle = images.add(Image::from_dynamic(
+                        image,
+                        true,
+                        RenderAssetUsages::MAIN_WORLD | RenderAssetUsages::RENDER_WORLD,
+                    ));
+
+                    let (x, y) = state.cursor_position().into();
+
+                    for i in x..(x + 10) {
+                        for j in y..(y + 10) {
+                            let Some(entity) = cells.get_mut(((j * 400) + i) as usize) else {
+                                continue;
+                            };
+
+                            let entity = mem::replace(entity, Entity::PLACEHOLDER);
+
+                            if entity != Entity::PLACEHOLDER {
+                                commands.entity(entity).despawn_recursive();
+                            }
+                        }
+                    }
+
+                    let Some(cell_entity) = cells.get_mut(state.cursor_offset(400)) else {
+                        continue;
+                    };
+
+                    {
+                        let entity = mem::replace(cell_entity, Entity::PLACEHOLDER);
+
+                        if entity != Entity::PLACEHOLDER {
+                            commands.entity(entity).despawn_recursive();
+                        }
+                    }
+
+                    commands.entity(entity).with_children(|builder| {
+                        let [grid_column, grid_row] = (state.cursor_position() + UVec2::ONE)
+                            .to_array()
+                            .map(|axis| GridPlacement::start(axis as i16));
+
+                        let size = Extent3d {
+                            width: 100,
+                            height: 100,
+                            depth_or_array_layers: 1,
+                        };
+
+                        *cell_entity = builder
+                            .spawn((
+                                //BackgroundColor(state.style.background),
+                                Node {
+                                    grid_column,
+                                    grid_row,
+                                    width: Val::Px(100.0),
+                                    height: Val::Px(100.0),
+                                    ..default()
+                                },
+                                TerminalCell,
+                            ))
+                            .with_children(|builder| {
+                                builder.spawn((
+                                    Cube,
+                                    Mesh3d(meshes.add(Cuboid::default())),
+                                    MeshMaterial3d(materials.add(StandardMaterial {
+                                        base_color: Color::WHITE,
+                                        base_color_texture: Some(image_handle.clone()),
+                                        emissive: Color::WHITE.into(),
+                                        emissive_texture: Some(image_handle.clone()),
+                                        ..default()
+                                    })),
+                                    RenderLayers::layer(1),
+                                    Transform::from_xyz(0.0, 0.0, -100.0)
+                                        .with_scale(Vec3::splat(50.0)),
+                                ));
+
+                                let mut image = Image::new_fill(
+                                    size,
+                                    TextureDimension::D2,
+                                    &[0; 4],
+                                    TextureFormat::Bgra8UnormSrgb,
+                                    RenderAssetUsages::MAIN_WORLD | RenderAssetUsages::RENDER_WORLD,
+                                );
+
+                                image.texture_descriptor.usage = TextureUsages::TEXTURE_BINDING
+                                    | TextureUsages::COPY_DST
+                                    | TextureUsages::RENDER_ATTACHMENT;
+
+                                let image_handle = images.add(image);
+
+                                builder.spawn((
+                                    Camera3d::default(),
+                                    Camera {
+                                        clear_color: ClearColorConfig::Custom(Color::NONE),
+                                        order: -1,
+                                        target: RenderTarget::Image(image_handle.clone()),
+                                        ..default()
+                                    },
+                                    RenderLayers::layer(1),
+                                    Transform::from_xyz(0.0, 0.0, 0.0),
+                                ));
+
+                                builder.spawn(UiImage::new(image_handle));
+                            })
+                            .id();
+                    });
+
+                    state.move_right(10);
+                }
+                VteEvent::ReportCursorPosition => {
+                    let (column, row) = (state.cursor_position() + UVec2::ONE).into();
+
+                    writer.send(format!("\x1b[{row};{column}R").into()).unwrap();
+                }
+                VteEvent::ClearLeft => {
+                    let (x, y) = state.cursor_position().into();
+
+                    for i in 0..x {
+                        let Some(entity) = cells.get_mut(((y * 400) + i) as usize) else {
+                            continue;
+                        };
+
+                        let entity = mem::replace(entity, Entity::PLACEHOLDER);
+
+                        if entity != Entity::PLACEHOLDER {
+                            commands.entity(entity).despawn_recursive();
+                        }
+                    }
+                }
+                VteEvent::ClearRight => {
+                    let (x, y) = state.cursor_position().into();
+
+                    for i in x..400 {
+                        let Some(entity) = cells.get_mut(((y * 400) + i) as usize) else {
+                            continue;
+                        };
+
+                        let entity = mem::replace(entity, Entity::PLACEHOLDER);
+
+                        if entity != Entity::PLACEHOLDER {
+                            commands.entity(entity).despawn_recursive();
+                        }
+                    }
+                }
+                VteEvent::ClearLine => {
+                    let (_x, y) = state.cursor_position().into();
+
+                    for i in 0..400 {
+                        let Some(entity) = cells.get_mut(((y * 400) + i) as usize) else {
+                            continue;
+                        };
+
+                        let entity = mem::replace(entity, Entity::PLACEHOLDER);
+
+                        if entity != Entity::PLACEHOLDER {
+                            commands.entity(entity).despawn_recursive();
+                        }
+                    }
+                }
+                VteEvent::ClearUp => {
+                    let (x, y) = state.cursor_position().into();
+
+                    for i in 0..x {
+                        for j in 0..y {
+                            let Some(entity) = cells.get_mut(((j * 400) + i) as usize) else {
+                                continue;
+                            };
+
+                            let entity = mem::replace(entity, Entity::PLACEHOLDER);
+
+                            if entity != Entity::PLACEHOLDER {
+                                commands.entity(entity).despawn_recursive();
+                            }
+                        }
+                    }
+                }
+                VteEvent::ClearDown => {
+                    let (x, y) = state.cursor_position().into();
+
+                    for i in x..400 {
+                        for j in y..400 {
+                            let Some(entity) = cells.get_mut(((j * 400) + i) as usize) else {
+                                continue;
+                            };
+
+                            let entity = mem::replace(entity, Entity::PLACEHOLDER);
+
+                            if entity != Entity::PLACEHOLDER {
+                                commands.entity(entity).despawn_recursive();
+                            }
+                        }
+                    }
+                }
+                VteEvent::ClearAll | VteEvent::ClearEverything => {
+                    for i in 0..400 {
+                        for j in 0..400 {
+                            let Some(entity) = cells.get_mut(((j * 400) + i) as usize) else {
+                                continue;
+                            };
+
+                            let entity = mem::replace(entity, Entity::PLACEHOLDER);
+
+                            if entity != Entity::PLACEHOLDER {
+                                commands.entity(entity).despawn_recursive();
+                            }
+                        }
+                    }
                 }
                 _ => {}
             }
