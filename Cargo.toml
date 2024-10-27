@@ -1,49 +1,19 @@
-[workspace]
-members = ["crates/*"]
-resolver = "2"
+[package]
+name = "milkshake-terminal"
+version = "0.0.0"
+edition = "2021"
 
-[workspace.dependencies]
-avian3d = { version = "0.1.2", default-features = false, features = [
-    "3d",
-    "bevy_scene",
-    "collider-from-mesh",
-    "debug-plugin",
-    "f32",
-    "parallel",
-    "parry-f32",
-] }
-bevy = { version = "0.14.2", default-features = false, features = [
-    "animation",
-    "bevy_asset",
-    "bevy_audio",
-    "bevy_core_pipeline",
-    "bevy_state",
-    "bevy_render",
-    "bevy_pbr",
-    "bevy_ui",
-    "tonemapping_luts",
-    "bevy_winit",
-    "wayland",
-    "png",
-] }
-compact_str = { version = "0.8.0", default-features = false, features = ["std"] }
+[dependencies]
+bevy = { version = "0.15.0-rc.1", default-features = false, features = ["bevy_text", "bevy_ui", "multi_threaded", "tonemapping_luts", "wayland"] }
+compact_str = { version = "0.8.0", default-features = false }
 crossbeam-channel = { version = "0.5.13", default-features = false }
-leafwing-input-manager = { version = "0.15.1", default-features = false, features = [
-    "gamepad",
-    "keyboard",
-    "mouse",
-    "timing",
-] }
+deranged = { version = "0.3.11", default-features = false }
+derive_more = { version = "1.0.0", default-features = false, features = ["add", "add_assign", "display", "from", "from_str", "mul", "mul_assign", "not", "sum"] }
 libc = { version = "0.2.161", default-features = false }
-rustix = { version = "0.38.37", default-features = false, features = [
-    "process",
-] }
+rustix = { version = "0.38.37", default-features = false, features = ["libc", "process", "std"] }
 rustix-openpty = { version = "0.1.1", default-features = false }
 unicode-segmentation = { version = "1.12.0", default-features = false }
 vte = { version = "0.13.0", default-features = false }
-
-milkshake-vte.path = "crates/milkshake-vte"
-milkshake-terminal.path = "crates/milkshake-terminal"
 
 [profile.dev]
 opt-level = 2
