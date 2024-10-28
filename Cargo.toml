@@ -17,6 +17,8 @@ fontconfig = ["font-kit/source-fontconfig", "font-kit/loader-freetype"]
 [dependencies]
 base64 = { version = "0.22.1", default-features = false, features = ["std"] }
 bevy = { version = "0.15.0-rc.2", default-features = false, features = [
+    "android-game-activity",
+    "android_shared_stdcxx",
     "bevy_pbr",
     "bevy_text",
     "bevy_ui",
