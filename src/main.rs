@@ -13,7 +13,7 @@ use std::ffi::{CStr, OsStr, OsString};
 use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::process::{Command, Termination};
-use std::{io, mem, thread};
+use std::{env, io, mem, thread};
 
 mod convert;
 mod pseudo_terminal;
@@ -625,6 +625,10 @@ fn new_cell(
 }
 
 fn shell() -> OsString {
+    if let Some(shell) = env::var_os("SHELL") {
+        return shell;
+    }
+
     unsafe {
         let entry = libc::getpwuid(libc::getuid());
 
