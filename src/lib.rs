@@ -139,9 +139,6 @@ pub struct InternalTerminalState {
 
 #[bevy_main]
 pub fn main() {
-    #[cfg(target_os = "android")]
-    bevy::window::ANDROID_APP.show_soft_input(true);
-
     App::new()
         .insert_resource(ClearColor(Color::BLACK))
         .add_plugins(DefaultPlugins)
@@ -157,6 +154,12 @@ fn rotate_cubes(mut query: Query<&mut Transform, With<Cube>>, time: ResMut<Time>
 }
 
 fn setup(asset_server: Res<AssetServer>, mut commands: Commands) {
+    #[cfg(target_os = "android")]
+    bevy::window::ANDROID_APP
+        .get()
+        .expect("Bevy must be setup with the #[bevy_main] macro on Androi")
+        .show_soft_input(true);
+
     commands.spawn(Camera3d::default());
 
     commands.spawn((
