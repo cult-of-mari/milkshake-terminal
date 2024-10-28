@@ -15,6 +15,7 @@ use std::process::Command;
 use std::{env, io, mem, thread};
 
 mod convert;
+mod font;
 mod pseudo_terminal;
 mod vte;
 
@@ -173,68 +174,8 @@ fn setup(asset_server: Res<AssetServer>, mut commands: Commands) {
         },
         Terminal,
         TerminalCommand(Command::new(shell())),
-        find_fonts(asset_server),
+        font::default(asset_server),
     ));
-}
-
-fn find_fonts(asset_server: Res<AssetServer>) -> TerminalFonts {
-    let regular = find_font(&asset_server, "Regular");
-    let regular_italic = find_font(&asset_server, "RegularItalic");
-    let bold = find_font(&asset_server, "Bold");
-    let bold_italic = find_font(&asset_server, "BoldItalic");
-
-    TerminalFonts {
-        regular,
-        regular_italic,
-        bold,
-        bold_italic,
-    }
-}
-
-fn find_font(asset_server: &AssetServer, kind: &str) -> Handle<Font> {
-    let source = font_kit::sources::multi::MultiSource::from_sources(vec![
-        Box::new(font_kit::source::SystemSource::new()),
-        Box::new(font_kit::sources::fs::FsSource::new()),
-        #[cfg(feature = "fontconfig")]
-        Box::new(font_kit::sources::fontconfig::FontconfigSource::new()),
-    ]);
-
-    if let Ok(font_family) = source.select_family_by_name("monospace") {
-        for font in font_family.fonts() {
-            match font {
-                font_kit::handle::Handle::Path { path, font_index } => {
-                    return asset_server.load(path.clone())
-                }
-                font_kit::handle::Handle::Memory { bytes, font_index } => {
-                    eprintln!("Memory font not supported");
-                }
-            }
-        }
-    } else if let Ok(font_family) = source.select_family_by_name("serif") {
-        for font in font_family.fonts() {
-            match font {
-                font_kit::handle::Handle::Path { path, font_index } => {
-                    return asset_server.load(path.clone())
-                }
-                font_kit::handle::Handle::Memory { bytes, font_index } => {
-                    eprintln!("Memory font not supported");
-                }
-            }
-        }
-    } else if let Ok(font_family) = source.select_family_by_name("sans-serif") {
-        for font in font_family.fonts() {
-            match font {
-                font_kit::handle::Handle::Path { path, font_index } => {
-                    return asset_server.load(path.clone())
-                }
-                font_kit::handle::Handle::Memory { bytes, font_index } => {
-                    eprintln!("Memory font not supported");
-                }
-            }
-        }
-    }
-
-    panic!("No font found for kind: {}", kind);
 }
 
 struct Handler(Sender<VteEvent>);

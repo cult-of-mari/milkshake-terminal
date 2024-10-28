@@ -10,10 +10,6 @@ path = "src/main.rs"
 [lib]
 crate-type = ["cdylib", "rlib"]
 
-[features]
-default = []
-fontconfig = ["font-kit/source-fontconfig", "font-kit/loader-freetype"]
-
 [dependencies]
 base64 = { version = "0.22.1", default-features = false, features = ["std"] }
 bevy = { version = "0.15.0-rc.2", default-features = false, features = [
@@ -28,7 +24,7 @@ bevy = { version = "0.15.0-rc.2", default-features = false, features = [
 ] }
 compact_str = { version = "0.8.0", default-features = false }
 crossbeam-channel = { version = "0.5.13", default-features = false }
-font-kit = { version = "0.14.2" }
+fontdb = { version = "0.16.2", default-features = false }
 image = { version = "0.25.4", default-features = false, features = [
     "jpeg",
     "png",
@@ -47,7 +43,3 @@ opt-level = 2
 
 [profile.dev.package."*"]
 opt-level = 3
-
-[patch.crates-io]
-# https://github.com/servo/pathfinder/issues/571
-pathfinder_simd = { git = "https://github.com/theoparis/pathfinder" }
