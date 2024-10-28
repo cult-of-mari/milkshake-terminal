@@ -9,6 +9,7 @@ use bevy::render::view::RenderLayers;
 use compact_str::CompactString;
 use crossbeam_channel::{Receiver, Sender};
 use pseudo_terminal::PseudoTerminal;
+use std::ffi::{CStr, OsStr, OsString};
 use std::io::{Read, Write};
 use std::process::Command;
 use std::{io, mem, thread};
@@ -164,7 +165,7 @@ fn setup(asset_server: Res<AssetServer>, mut commands: Commands) {
             ..default()
         },
         Terminal,
-        TerminalCommand(Command::new("fish")),
+        TerminalCommand(Command::new(shell())),
         TerminalFonts {
             regular: asset_server.load("fonts/RobotoMono-SemiBold.ttf"),
             regular_italic: asset_server.load("fonts/RobotoMono-SemiBoldItalic.ttf"),
@@ -589,4 +590,26 @@ fn new_cell(
             },
         ))
         .id()
+}
+
+fn shell() -> OsString {
+    unsafe {
+        let entry = libc::getpwuid(libc::getuid());
+
+        if !entry.is_null() {
+            let bytes = CStr::from_ptr((*entry).pw_shell);
+
+            return OsStr::from_encoded_bytes_unchecked(bytes.to_bytes()).into();
+        }
+    }
+
+    #[cfg(target_os = "android")]
+    {
+        "/system/bin/sh".into()
+    }
+
+    #[cfg(not(target_os = "android"))]
+    {
+        "/bin/sh".into()
+    }
 }
