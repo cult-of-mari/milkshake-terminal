@@ -5,6 +5,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 360
     steps:
+      - uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r29
+          add-to-path: true
+          local-cache: true
+
       - name: Install dependencies
         run: sudo apt-get install gperf
 
@@ -17,6 +23,6 @@ jobs:
       - name: Cross compile
         run: |
           cd fontconfig-2.15.0
-          ./configure --host=aarch64-unknown-linux-android --target=aarch64-unknown-linux-android --prefix=$(pwd) --with-default-fonts=/system/fonts
+          ./configure --host=aarch64-linux-android --target=aarch64-linux-android --prefix=$(pwd) --with-default-fonts=/system/fonts
           make
           make install
