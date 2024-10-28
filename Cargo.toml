@@ -3,16 +3,22 @@ name = "milkshake-terminal"
 version = "0.0.0"
 edition = "2021"
 
-[[bin]]
-name = "milkshake-terminal"
-path = "src/main.rs"
-
 [lib]
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 base64 = { version = "0.22.1", default-features = false, features = ["std"] }
-bevy = { version = "0.15.0-rc.2", default-features = false, features = [
+compact_str = { version = "0.8.0", default-features = false }
+crossbeam-channel = { version = "0.5.13", default-features = false }
+fontdb = { version = "0.16.2", default-features = false }
+libc = { version = "0.2.161", default-features = false }
+rustix-openpty = { version = "0.1.1", default-features = false }
+vte = { version = "0.13.0", default-features = false }
+
+[dependencies.bevy]
+version = "0.15.0-rc.2"
+default-features = false
+features = [
     "android-game-activity",
     "android_shared_stdcxx",
     "bevy_pbr",
@@ -21,22 +27,24 @@ bevy = { version = "0.15.0-rc.2", default-features = false, features = [
     "multi_threaded",
     "tonemapping_luts",
     "wayland",
-] }
-compact_str = { version = "0.8.0", default-features = false }
-crossbeam-channel = { version = "0.5.13", default-features = false }
-fontdb = { version = "0.16.2", default-features = false }
-image = { version = "0.25.4", default-features = false, features = [
+]
+
+[dependencies.image]
+version = "0.25.4"
+default-features = false
+features = [
     "jpeg",
     "png",
-] }
-libc = { version = "0.2.161", default-features = false }
-rustix = { version = "0.38.37", default-features = false, features = [
+]
+
+[dependencies.rustix]
+version = "0.38.37"
+default-features = false
+features = [
     "libc",
     "process",
     "std",
-] }
-rustix-openpty = { version = "0.1.1", default-features = false }
-vte = { version = "0.13.0", default-features = false }
+]
 
 [profile.dev]
 opt-level = 2
