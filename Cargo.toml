@@ -8,6 +8,7 @@ base64 = { version = "0.22.1", default-features = false, features = ["std"] }
 bevy = { version = "0.15.0-rc.1", default-features = false, features = ["bevy_pbr", "bevy_text", "bevy_ui", "multi_threaded", "tonemapping_luts", "wayland"] }
 compact_str = { version = "0.8.0", default-features = false }
 crossbeam-channel = { version = "0.5.13", default-features = false }
+fontconfig = { version = "0.9.0", default-features = false, features = ["dlopen"] }
 image = { version = "0.25.4", default-features = false, features = ["jpeg", "png"] }
 libc = { version = "0.2.161", default-features = false }
 rustix = { version = "0.38.37", default-features = false, features = ["libc", "process", "std"] }

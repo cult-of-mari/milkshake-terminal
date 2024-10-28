@@ -11,7 +11,8 @@ use crossbeam_channel::{Receiver, Sender};
 use pseudo_terminal::PseudoTerminal;
 use std::ffi::{CStr, OsStr, OsString};
 use std::io::{Read, Write};
-use std::process::Command;
+use std::path::PathBuf;
+use std::process::{Command, Termination};
 use std::{io, mem, thread};
 
 mod convert;
@@ -166,13 +167,44 @@ fn setup(asset_server: Res<AssetServer>, mut commands: Commands) {
         },
         Terminal,
         TerminalCommand(Command::new(shell())),
-        TerminalFonts {
-            regular: asset_server.load("fonts/RobotoMono-SemiBold.ttf"),
-            regular_italic: asset_server.load("fonts/RobotoMono-SemiBoldItalic.ttf"),
-            bold: asset_server.load("fonts/RobotoMono-Bold.ttf"),
-            bold_italic: asset_server.load("fonts/RobotoMono-BoldItalic.ttf"),
-        },
+        find_fonts(asset_server),
     ));
+}
+
+fn find_fonts(asset_server: Res<AssetServer>) -> TerminalFonts {
+    let Some(fontconfig) = fontconfig::Fontconfig::new() else {
+        todo!();
+    };
+
+    let [regular, regular_italic, bold, bold_italic] = find_roboto_mono(&fontconfig)
+        .or_else(|| find_mono(&fontconfig))
+        .unwrap();
+
+    TerminalFonts {
+        regular: asset_server.load(regular),
+        regular_italic: asset_server.load(regular_italic),
+        bold: asset_server.load(bold),
+        bold_italic: asset_server.load(bold_italic),
+    }
+}
+
+fn find_roboto_mono(fontconfig: &fontconfig::Fontconfig) -> Option<[PathBuf; 4]> {
+    let regular = fontconfig.find("RobotoMono", Some("SemiBold"))?.path;
+    let regular_italic = fontconfig.find("RobotoMono", Some("SemiBoldItalic"))?.path;
+    let bold = fontconfig.find("RobotoMono", Some("Bold"))?.path;
+    let bold_italic = fontconfig.find("RobotoMono", Some("BoldItalic"))?.path;
+
+    Some([regular, regular_italic, bold, bold_italic])
+}
+
+fn find_mono(fontconfig: &fontconfig::Fontconfig) -> Option<[PathBuf; 4]> {
+    let mut pattern = fontconfig::Pattern::new(&fontconfig);
+
+    pattern.add_string(fontconfig::FC_SPACING, c"monospace");
+
+    let font_match = pattern.font_match();
+
+    Some([font_match.filename()?; 4].map(PathBuf::from))
 }
 
 struct Handler(Sender<VteEvent>);

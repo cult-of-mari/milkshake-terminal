@@ -1854,6 +1854,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "fontconfig"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b60f7d9b14055dddd3b3ab0e511ecfdf49f02e7e31b09f9111de3e424ea7bb4b"
+dependencies = [
+ "yeslogic-fontconfig-sys",
+]
+
+[[package]]
 name = "fontconfig-parser"
 version = "0.5.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2358,6 +2367,7 @@ dependencies = [
  "bevy",
  "compact_str",
  "crossbeam-channel",
+ "fontconfig",
  "image",
  "libc",
  "rustix",
@@ -4487,6 +4497,17 @@ name = "yazi"
 version = "0.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c94451ac9513335b5e23d7a8a2b61a7102398b8cca5160829d313e84c9d98be1"
+
+[[package]]
+name = "yeslogic-fontconfig-sys"
+version = "6.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "503a066b4c037c440169d995b869046827dbc71263f6e8f3be6d77d4f3229dbd"
+dependencies = [
+ "dlib",
+ "once_cell",
+ "pkg-config",
+]
 
 [[package]]
 name = "zeno"
