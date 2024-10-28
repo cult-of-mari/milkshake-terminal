@@ -10,7 +10,7 @@ crate-type = ["cdylib", "rlib"]
 base64 = { version = "0.22.1", default-features = false, features = ["std"] }
 compact_str = { version = "0.8.0", default-features = false }
 crossbeam-channel = { version = "0.5.13", default-features = false }
-fontdb = { version = "0.16.2", default-features = false }
+fontdb = { version = "0.16.2", default-features = false, features = ["fs"] }
 libc = { version = "0.2.161", default-features = false }
 rustix-openpty = { version = "0.1.1", default-features = false }
 vte = { version = "0.13.0", default-features = false }
@@ -32,22 +32,16 @@ features = [
 [dependencies.image]
 version = "0.25.4"
 default-features = false
-features = [
-    "jpeg",
-    "png",
-]
+features = ["jpeg", "png"]
 
 [dependencies.rustix]
 version = "0.38.37"
 default-features = false
-features = [
-    "libc",
-    "process",
-    "std",
-]
+features = ["libc", "process", "std"]
 
 [profile.dev]
 opt-level = 2
+strip = "symbols"
 
 [profile.dev.package."*"]
 opt-level = 3

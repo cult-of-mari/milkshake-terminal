@@ -174,7 +174,7 @@ fn setup(asset_server: Res<AssetServer>, mut commands: Commands) {
         },
         Terminal,
         TerminalCommand(Command::new(shell())),
-        font::default(asset_server),
+        font::default(&asset_server),
     ));
 }
 
