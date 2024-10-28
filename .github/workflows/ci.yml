@@ -24,5 +24,13 @@ jobs:
       - name: Install cargo NDK
         run: cargo install cargo-ndk
 
+      - name: Build fontconfig
+        run: |
+          wget https://www.freedesktop.org/software/fontconfig/release/fontconfig-2.15.0.tar.xz
+          tar xvf fontconfig-2.15.0.tar.xz
+          cd fontconfig-2.15.0
+          ./configure --host aarch64-unknown-linux-android --with-default-fonts=/system/fonts
+          make
+
       - name: Build .so file
         run: cargo ndk -t arm64-v8a -o android/app/src/main/jniLibs build
