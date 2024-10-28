@@ -2,6 +2,7 @@ on: workflow_dispatch
 
 jobs:
   build-android-fontconfig:
+    name: Build Android fontconfig
     runs-on: ubuntu-latest
     timeout-minutes: 360
     steps:

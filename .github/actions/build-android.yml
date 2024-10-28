@@ -2,6 +2,8 @@ on: workflow_dispatch
 
 jobs:
   build-android:
+    name: Build Android APK
+    needs: build-android-fontconfig
     runs-on: ubuntu-latest
     timeout-minutes: 360
     steps:
