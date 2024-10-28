@@ -139,6 +139,9 @@ pub struct InternalTerminalState {
 
 #[bevy_main]
 pub fn main() {
+    #[cfg(target_os = "android")]
+    bevy::window::ANDROID_APP.show_soft_input(true);
+
     App::new()
         .insert_resource(ClearColor(Color::BLACK))
         .add_plugins(DefaultPlugins)
@@ -172,19 +175,6 @@ fn setup(asset_server: Res<AssetServer>, mut commands: Commands) {
 }
 
 fn find_fonts(asset_server: Res<AssetServer>) -> TerminalFonts {
-    // let Some(fontconfig) = fontconfig::Fontconfig::new() else {
-    //     todo!();
-    // };
-    // let [regular, regular_italic, bold, bold_italic] = find_roboto_mono(&fontconfig)
-    //     .or_else(|| find_mono(&fontconfig))
-    //     .unwrap();
-    // TerminalFonts {
-    //     regular: asset_server.load(regular),
-    //     regular_italic: asset_server.load(regular_italic),
-    //     bold: asset_server.load(bold),
-    //     bold_italic: asset_server.load(bold_italic),
-    // }
-
     let regular = find_font(&asset_server, "Regular");
     let regular_italic = find_font(&asset_server, "RegularItalic");
     let bold = find_font(&asset_server, "Bold");
