@@ -7,7 +7,7 @@ jobs:
     steps:
       - uses: nttld/setup-ndk@v1
         with:
-          ndk-version: r29
+          ndk-version: r27
           add-to-path: true
           local-cache: true
 
