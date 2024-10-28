@@ -17,6 +17,6 @@ jobs:
       - name: Cross compile
         run: |
           cd fontconfig-2.15.0
-          ./configure --host=aarch64-unknown-linux-android --target=aarch64-unknown-linux-android --prefix=. --with-default-fonts=/system/fonts
+          ./configure --host=aarch64-unknown-linux-android --target=aarch64-unknown-linux-android --prefix=$(pwd) --with-default-fonts=/system/fonts
           make
           make install
