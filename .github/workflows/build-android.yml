@@ -2,10 +2,10 @@ on: workflow_dispatch
 
 jobs:
   build-android:
-    name: Build Android APK
+    run-name: Build Android APK
     needs: build-android-fontconfig
     runs-on: ubuntu-latest
-    timeout-minutes: 360
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
@@ -17,11 +17,33 @@ jobs:
           java-version: "17"
           distribution: "temurin"
 
-      - name: Add Android targets
+      - uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r27
+          add-to-path: true
+          local-cache: true
+
+      - name: Install gperf
+        run: sudo apt-get install gperf
+
+      - name: Install aarch64-linux-android target
         run: rustup target add aarch64-linux-android
 
-      - name: Install cargo NDK
+      - name: Install cargo-ndk
         run: cargo install cargo-ndk
 
-      - name: Build .so file
+      - name: Download fontconfig tarball
+        run: wget https://www.freedesktop.org/software/fontconfig/release/fontconfig-2.15.0.tar.xz
+
+      - name: Extract fontconfig tarball
+        run: tar xf fontconfig-2.15.0.tar.xz
+
+      - name: Cross compile fontconfig
+        run: |
+          cd fontconfig-2.15.0
+          ./configure --host=aarch64-linux-android --target=aarch64-linux-android --prefix=$(pwd) --with-default-fonts=/system/fonts
+          make
+          make install
+
+      - name: Build shared library
         run: cargo ndk -t arm64-v8a -o android/app/src/main/jniLibs build
