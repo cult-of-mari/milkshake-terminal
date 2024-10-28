@@ -138,6 +138,7 @@ impl<T: VteHandler> vte::Perform for Performer<T> {
 
     fn execute(&mut self, byte: u8) {
         match byte {
+            b'\t' => self.state.vte_event(VteEvent::Echo('\t')),
             b'\x08' => self.state.vte_event(VteEvent::Backspace),
             b'\r' => self.state.vte_event(VteEvent::GotoX(0)),
             b'\n' => self.state.vte_event(VteEvent::LineDown(1)),
