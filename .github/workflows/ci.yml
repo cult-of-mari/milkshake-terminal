@@ -16,7 +16,7 @@ jobs:
         uses: actions/setup-java@v4
         with:
           java-version: "17"
-          distribution: "termurin"
+          distribution: "temurin"
 
       - name: Add Android targets
         run: rustup target add aarch64-linux-android
