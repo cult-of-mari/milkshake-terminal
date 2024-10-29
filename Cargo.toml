@@ -21,12 +21,15 @@ default-features = false
 features = [
     "android-game-activity",
     "android_shared_stdcxx",
+    "bevy_asset",
     "bevy_pbr",
     "bevy_text",
     "bevy_ui",
+    "bevy_winit",
     "multi_threaded",
     "tonemapping_luts",
     "wayland",
+    "default_font",
 ]
 
 [dependencies.image]

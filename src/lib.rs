@@ -1,22 +1,23 @@
 use self::vte::{Vte, VteEvent};
-use bevy::asset::RenderAssetUsages;
+use bevy::asset::{embedded_asset, RenderAssetUsages};
 use bevy::color::palettes::css;
 use bevy::input::keyboard::KeyboardInput;
 use bevy::prelude::*;
 use bevy::render::camera::RenderTarget;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat, TextureUsages};
 use bevy::render::view::RenderLayers;
+use bevy::window::WindowMode;
 use compact_str::CompactString;
 use crossbeam_channel::{Receiver, Sender};
 use pseudo_terminal::PseudoTerminal;
-use std::ffi::{CStr, OsStr, OsString};
 use std::io::{Read, Write};
 use std::process::Command;
-use std::{env, io, mem, thread};
+use std::{io, mem, thread};
 
 mod convert;
 mod font;
 mod pseudo_terminal;
+mod shell;
 mod vte;
 
 #[derive(Clone, Copy, Component, Debug, Default, Reflect)]
@@ -41,12 +42,23 @@ pub struct TerminalFonts {
     pub bold_italic: Handle<Font>,
 }
 
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug)]
 struct TerminalStyle {
     foreground: Color,
     background: Color,
     bold: bool,
     italic: bool,
+}
+
+impl Default for TerminalStyle {
+    fn default() -> Self {
+        Self {
+            foreground: Color::WHITE,
+            background: Color::NONE,
+            bold: false,
+            italic: false,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -123,9 +135,7 @@ impl TerminalState {
     }
 
     pub fn reset(&mut self) {
-        self.style = default();
-        self.style.foreground = Color::WHITE;
-        self.style.background = Color::NONE;
+        mem::take(&mut self.style);
     }
 }
 
@@ -138,11 +148,35 @@ pub struct InternalTerminalState {
     state: TerminalState,
 }
 
+pub struct TerminalPlugin;
+
+impl Plugin for TerminalPlugin {
+    fn build(&self, app: &mut App) {
+        embedded_asset!(app, "../assets/fonts/RobotoMono-SemiBold.ttf");
+        embedded_asset!(app, "../assets/fonts/RobotoMono-SemiBoldItalic.ttf");
+        embedded_asset!(app, "../assets/fonts/RobotoMono-Bold.ttf");
+        embedded_asset!(app, "../assets/fonts/RobotoMono-BoldItalic.ttf");
+    }
+}
+
 #[bevy_main]
 pub fn main() {
     App::new()
         .insert_resource(ClearColor(Color::BLACK))
-        .add_plugins(DefaultPlugins)
+        .add_plugins((
+            DefaultPlugins.set(WindowPlugin {
+                primary_window: Some(Window {
+                    #[cfg(target_os = "android")]
+                    resizable: false,
+                    #[cfg(target_os = "android")]
+                    mode: WindowMode::BorderlessFullscreen(MonitorSelection::Primary),
+                    recognize_rotation_gesture: true,
+                    ..default()
+                }),
+                ..default()
+            }),
+            TerminalPlugin,
+        ))
         .add_systems(Startup, setup)
         .add_systems(Update, (setup_terminal, update, rotate_cubes))
         .run();
@@ -155,13 +189,11 @@ fn rotate_cubes(mut query: Query<&mut Transform, With<Cube>>, time: ResMut<Time>
 }
 
 fn setup(asset_server: Res<AssetServer>, mut commands: Commands) {
-    #[cfg(target_os = "android")]
-    bevy::window::ANDROID_APP
-        .get()
-        .expect("Bevy must be setup with the #[bevy_main] macro on Androi")
-        .show_soft_input(true);
-
-    commands.spawn(Camera3d::default());
+    commands.spawn((
+        Camera3d::default(),
+        #[cfg(target_os = "android")]
+        Msaa::Off,
+    ));
 
     commands.spawn((
         Node {
@@ -173,7 +205,7 @@ fn setup(asset_server: Res<AssetServer>, mut commands: Commands) {
             ..default()
         },
         Terminal,
-        TerminalCommand(Command::new(shell())),
+        TerminalCommand(shell::default()),
         font::default(&asset_server),
     ));
 }
@@ -226,7 +258,9 @@ pub fn setup_terminal(
             sender
         };
 
-        command.0.spawn().unwrap();
+        let result = command.0.spawn();
+
+        debug!("spawn command: {command:?} {result:?}");
 
         let internal_terminal_state = InternalTerminalState {
             cells: vec![Entity::PLACEHOLDER; 400 * 100],
@@ -262,6 +296,7 @@ fn update(
     mut keyboard_input: EventReader<KeyboardInput>,
     mut query: Query<(Entity, &mut InternalTerminalState)>,
     terminal_fonts: Query<&TerminalFonts>,
+    touch_input: Res<Touches>,
 ) {
     for (entity, mut state) in query.iter_mut() {
         let InternalTerminalState {
@@ -273,7 +308,7 @@ fn update(
         } = &mut *state;
 
         for event in reader.try_iter() {
-            debug!("{event:?}");
+            debug!("process vte event: {event:?}");
 
             match event {
                 VteEvent::Echo(character) => {
@@ -324,7 +359,7 @@ fn update(
                     state.style.foreground = TABLE[color as usize].into();
                 }
                 VteEvent::Background(color) => {
-                    state.style.background = TABLE[color as usize].into();
+                    //state.style.background = TABLE[color as usize].into();
                 }
                 VteEvent::Image(image) => {
                     let image =
@@ -434,6 +469,8 @@ fn update(
                                     },
                                     RenderLayers::layer(1),
                                     Transform::from_xyz(0.0, 0.0, 0.0),
+                                    #[cfg(target_os = "android")]
+                                    Msaa::Off,
                                 ));
 
                                 builder.spawn(UiImage::new(image_handle));
@@ -546,7 +583,19 @@ fn update(
             }
         }
 
+        if touch_input.any_just_pressed() {
+            debug!("process touch event: {touch_input:?}");
+
+            #[cfg(target_os = "android")]
+            bevy::window::ANDROID_APP
+                .get()
+                .unwrap()
+                .show_soft_input(true);
+        }
+
         for event in keyboard_input.read() {
+            debug!("process keyboard event: {event:?}");
+
             if !event.state.is_pressed() {
                 continue;
             }
@@ -593,30 +642,4 @@ fn new_cell(
             },
         ))
         .id()
-}
-
-fn shell() -> OsString {
-    if let Some(shell) = env::var_os("SHELL") {
-        return shell;
-    }
-
-    unsafe {
-        let entry = libc::getpwuid(libc::getuid());
-
-        if !entry.is_null() {
-            let bytes = CStr::from_ptr((*entry).pw_shell);
-
-            return OsStr::from_encoded_bytes_unchecked(bytes.to_bytes()).into();
-        }
-    }
-
-    #[cfg(target_os = "android")]
-    {
-        "/system/bin/sh".into()
-    }
-
-    #[cfg(not(target_os = "android"))]
-    {
-        "/bin/sh".into()
-    }
 }

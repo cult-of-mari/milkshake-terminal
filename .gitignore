@@ -1,1 +1,10 @@
+.classpath
+.cxx
+.externalNativeBuild
+.gradle
+.idea
+.project
+.settings
+/app/src/main/jniLibs
 /target
+local.properties
