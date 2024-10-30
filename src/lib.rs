@@ -1,18 +1,19 @@
 use self::vte::{Vte, VteEvent};
 use bevy::asset::{embedded_asset, RenderAssetUsages};
-use bevy::color::palettes::css;
+use bevy::color::palettes::basic;
+use bevy::color::Gray;
 use bevy::input::keyboard::KeyboardInput;
 use bevy::prelude::*;
 use bevy::render::camera::RenderTarget;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat, TextureUsages};
 use bevy::render::view::RenderLayers;
-use bevy::window::WindowMode;
 use compact_str::CompactString;
 use crossbeam_channel::{Receiver, Sender};
 use pseudo_terminal::PseudoTerminal;
 use std::io::{Read, Write};
 use std::process::Command;
 use std::{io, mem, thread};
+use vte::{Intensity, NamedColor, StandardColor};
 
 mod convert;
 mod font;
@@ -278,14 +279,14 @@ pub fn setup_terminal(
 pub struct Cube;
 
 static TABLE: [Srgba; 8] = [
-    css::BLACK,
-    css::RED,
-    css::GREEN,
-    css::YELLOW,
-    css::BLUE,
-    css::MAGENTA,
-    css::LIGHT_CYAN,
-    css::WHITE,
+    basic::BLACK,
+    basic::RED,
+    basic::GREEN,
+    basic::YELLOW,
+    basic::BLUE,
+    basic::FUCHSIA,
+    basic::AQUA,
+    basic::WHITE,
 ];
 
 fn update(
@@ -297,6 +298,12 @@ fn update(
     mut query: Query<(Entity, &mut InternalTerminalState)>,
     terminal_fonts: Query<&TerminalFonts>,
     touch_input: Res<Touches>,
+    mut cell_query: Query<(
+        &mut BackgroundColor,
+        &mut Text,
+        &mut TextColor,
+        &mut TextFont,
+    )>,
 ) {
     for (entity, mut state) in query.iter_mut() {
         let InternalTerminalState {
@@ -316,13 +323,24 @@ fn update(
                         continue;
                     };
 
-                    commands.entity(entity).with_children(|builder| {
-                        let terminal_fonts = terminal_fonts.get(builder.parent_entity()).unwrap();
+                    if *cell_entity == Entity::PLACEHOLDER {
+                        commands.entity(entity).with_children(|builder| {
+                            let terminal_fonts =
+                                terminal_fonts.get(builder.parent_entity()).unwrap();
 
-                        if *cell_entity == Entity::PLACEHOLDER {
                             *cell_entity = new_cell(state, terminal_fonts, builder, character);
-                        }
-                    });
+                        });
+                    } else {
+                        let terminal_fonts = terminal_fonts.get(entity).unwrap();
+
+                        set_cell(
+                            state,
+                            terminal_fonts,
+                            character,
+                            *cell_entity,
+                            &mut cell_query,
+                        );
+                    }
 
                     state.move_right(1);
                 }
@@ -356,10 +374,46 @@ fn update(
                 VteEvent::Bold => state.set_bold(),
                 VteEvent::Italic => state.set_italic(),
                 VteEvent::Foreground(color) => {
-                    state.style.foreground = TABLE[color as usize].into();
+                    info!("{color:?}");
+                    if let vte::AnsiColor::Standard(StandardColor { color, intensity }) = color {
+                        let mut color = if color == NamedColor::Black {
+                            Srgba::gray(0.5)
+                        } else {
+                            TABLE[color as usize]
+                        };
+
+                        match intensity {
+                            Intensity::Dim => color = color.darker(0.1),
+                            Intensity::Bright => color = color.lighter(0.1),
+                            _ => {}
+                        };
+
+                        state.style.foreground = color.into();
+                    }
+                }
+                VteEvent::ResetForeground => {
+                    state.style.foreground = TerminalStyle::default().foreground;
                 }
                 VteEvent::Background(color) => {
-                    //state.style.background = TABLE[color as usize].into();
+                    info!("{color:?}");
+                    if let vte::AnsiColor::Standard(StandardColor { color, intensity }) = color {
+                        let mut color = if color == NamedColor::Black {
+                            Srgba::gray(0.5)
+                        } else {
+                            TABLE[color as usize]
+                        };
+
+                        match intensity {
+                            Intensity::Dim => color = color.darker(0.1),
+                            Intensity::Bright => color = color.lighter(0.1),
+                            _ => {}
+                        };
+
+                        state.style.background = color.into();
+                    }
+                }
+                VteEvent::ResetBackground => {
+                    state.style.foreground = TerminalStyle::default().foreground;
                 }
                 VteEvent::Image(image) => {
                     let image =
@@ -642,4 +696,39 @@ fn new_cell(
             },
         ))
         .id()
+}
+
+fn set_cell(
+    terminal_state: &mut TerminalState,
+    terminal_fonts: &TerminalFonts,
+    character: char,
+    cell_entity: Entity,
+    cell_query: &mut Query<(
+        &mut BackgroundColor,
+        &mut Text,
+        &mut TextColor,
+        &mut TextFont,
+    )>,
+) {
+    let Ok((mut background_color, mut text, mut text_color, mut text_font)) =
+        cell_query.get_mut(cell_entity)
+    else {
+        return;
+    };
+
+    let font = match (terminal_state.style.bold, terminal_state.style.italic) {
+        (true, true) => &terminal_fonts.bold_italic,
+        (true, false) => &terminal_fonts.bold,
+        (false, true) => &terminal_fonts.regular_italic,
+        (false, false) => &terminal_fonts.regular,
+    };
+
+    background_color.0 = terminal_state.style.background;
+    text.0 = character.to_string();
+    text_color.0 = terminal_state.style.foreground;
+    *text_font = TextFont {
+        font: font.clone(),
+        font_size: 14.0,
+        ..default()
+    };
 }

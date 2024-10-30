@@ -2,7 +2,7 @@ use bevy::math::UVec2;
 use compact_str::CompactString;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum AnsiColor {
+pub enum NamedColor {
     Black,
     Red,
     Green,
@@ -11,6 +11,44 @@ pub enum AnsiColor {
     Magenta,
     Cyan,
     White,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Intensity {
+    Normal,
+    Dim,
+    Bright,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct StandardColor {
+    pub color: NamedColor,
+    pub intensity: Intensity,
+}
+
+impl NamedColor {
+    pub fn new(color: u16) -> Option<Self> {
+        let color = match color {
+            0 => Self::Black,
+            1 => Self::Red,
+            2 => Self::Green,
+            3 => Self::Yellow,
+            4 => Self::Blue,
+            5 => Self::Magenta,
+            6 => Self::Cyan,
+            7 => Self::White,
+            _ => return None,
+        };
+
+        Some(color)
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum AnsiColor {
+    Standard(StandardColor),
+    Index(u8),
+    Rgb(u8, u8, u8),
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -39,7 +77,9 @@ pub enum VteEvent {
     Italic,
     Underline,
     Foreground(AnsiColor),
+    ResetForeground,
     Background(AnsiColor),
+    ResetBackground,
     SetTitle(CompactString),
     RemoveTitle,
     Image(CompactString),
@@ -100,33 +140,41 @@ impl<T: VteHandler> Performer<T> {
             3 => self.state.vte_event(VteEvent::Italic),
             4 => self.state.vte_event(VteEvent::Underline),
 
-            30 => self.state.vte_event(VteEvent::Foreground(AnsiColor::Black)),
-            31 => self.state.vte_event(VteEvent::Foreground(AnsiColor::Red)),
-            32 => self.state.vte_event(VteEvent::Foreground(AnsiColor::Green)),
-            33 => self
+            30..=37 => self
                 .state
-                .vte_event(VteEvent::Foreground(AnsiColor::Yellow)),
-            34 => self.state.vte_event(VteEvent::Foreground(AnsiColor::Blue)),
-            35 => self
-                .state
-                .vte_event(VteEvent::Foreground(AnsiColor::Magenta)),
-            36 => self.state.vte_event(VteEvent::Foreground(AnsiColor::Cyan)),
-            37 => self.state.vte_event(VteEvent::Foreground(AnsiColor::White)),
+                .vte_event(VteEvent::Foreground(AnsiColor::Standard(StandardColor {
+                    color: NamedColor::new(param - 30).unwrap(),
+                    intensity: Intensity::Normal,
+                }))),
 
-            40 => self.state.vte_event(VteEvent::Background(AnsiColor::Black)),
-            41 => self.state.vte_event(VteEvent::Background(AnsiColor::Red)),
-            42 => self.state.vte_event(VteEvent::Background(AnsiColor::Green)),
-            43 => self
-                .state
-                .vte_event(VteEvent::Background(AnsiColor::Yellow)),
-            44 => self.state.vte_event(VteEvent::Background(AnsiColor::Blue)),
-            45 => self
-                .state
-                .vte_event(VteEvent::Background(AnsiColor::Magenta)),
-            46 => self.state.vte_event(VteEvent::Background(AnsiColor::Cyan)),
-            47 => self.state.vte_event(VteEvent::Background(AnsiColor::White)),
+            39 => self.state.vte_event(VteEvent::ResetForeground),
 
-            _ => {}
+            40..=47 => self
+                .state
+                .vte_event(VteEvent::Background(AnsiColor::Standard(StandardColor {
+                    color: NamedColor::new(param - 40).unwrap(),
+                    intensity: Intensity::Normal,
+                }))),
+
+            49 => self.state.vte_event(VteEvent::ResetBackground),
+
+            90..=97 => self
+                .state
+                .vte_event(VteEvent::Foreground(AnsiColor::Standard(StandardColor {
+                    color: NamedColor::new(param - 90).unwrap(),
+                    intensity: Intensity::Normal,
+                }))),
+
+            100..=107 => self
+                .state
+                .vte_event(VteEvent::Background(AnsiColor::Standard(StandardColor {
+                    color: NamedColor::new(param - 100).unwrap(),
+                    intensity: Intensity::Normal,
+                }))),
+
+            _ => {
+                bevy::prelude::error!("uncaught SGR: {param}");
+            }
         }
     }
 }
@@ -220,7 +268,16 @@ impl<T: VteHandler> vte::Perform for Performer<T> {
             's' => self.state.vte_event(VteEvent::SaveCursorPosition),
             'u' => self.state.vte_event(VteEvent::RestoreCursorPosition),
             _ => {
-                //dbg!(action);
+                bevy::prelude::error!(
+                    "uncaught CSI: \\x1b[{}{action}",
+                    iter.map(|params| params
+                        .iter()
+                        .map(|param| param.to_string())
+                        .collect::<Vec<_>>()
+                        .join("@"))
+                        .collect::<Vec<_>>()
+                        .join(";")
+                );
             }
         }
     }
