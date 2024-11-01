@@ -34,6 +34,8 @@ impl PseudoTerminal {
         let Self { user, .. } = self;
 
         command
+            .env("TERM", "xterm-256color")
+            .env("COLORTERM", "truecolor")
             .stdin(user.try_clone()?)
             .stdout(user.try_clone()?)
             .stderr(user.try_clone()?);
